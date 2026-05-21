@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>🛒 Mi Carrito</h1>
+
+<div id="cart-items"></div>
+<h3 id="total"></h3>
+
+<hr>
+
+<button onclick="checkout()">💳 Pagar</button>
+
+<!-- 🔐 AUTH MODAL -->
+<div id="authModal" style="display:none; padding:20px; border:1px solid #ccc; margin-top:20px;">
+  <h3>Iniciar sesión</h3>
+  <input id="username" placeholder="usuario"><br><br>
+  <input id="password" type="password" placeholder="contraseña"><br><br>
+  <button onclick="login()">Login</button>
+  <button onclick="register()">Registrarse</button>
+</div>
+
+<script>
+
+let cartData = [];
+
+function loadCart() {
+  fetch("/api/cart/")
+    .then(res => res.json())
+    .then(data => {
+      cartData = data.items || [];
+      const container = document.getElementById("cart-items");
+      container.innerHTML = "";
+      let total = 0;
+
+      if (!cartData.length) {
+        container.innerHTML = "<p>Tu carrito está vacío 🛒</p>";
+        document.getElementById("total").innerHTML = "";
+        return;
+      }
+
+      cartData.forEach(item => {
+        total += item.product.price * item.quantity;
+        container.innerHTML += `
+          <div>
+            <p><b>${item.product.name}</b></p>
+            <p>Precio: ${item.product.price}</p>
+            <p>Cantidad: ${item.quantity}</p>
+            <button onclick="updateItem(${item.id}, ${item.quantity - 1})">➖</button>
+            <button onclick="updateItem(${item.id}, ${item.quantity + 1})">➕</button>
+            <hr>
+          </div>`;
+      });
+
+      document.getElementById("total").innerHTML = "Total: $" + total;
+    });
+}
+
+function updateItem(itemId, quantity) {
+  if (quantity <= 0) return;
+  fetch(`/api/cart/update/${itemId}/`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantity })
+  }).then(() => loadCart());
+}
+
+function checkout() {
+  const token = localStorage.getItem("access");
+  if (!token) {
+    showAuthModal();
+    return;
+  }
+  createOrder(token);
+}
+
+function createOrder(token) {
+  fetch("/api/orders/create/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify({})
+  })
+  .then(async res => {
+    const text = await res.text();
+    console.log("RESPUESTA BACKEND:", text);
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) { throw new Error("El servidor no devolvió JSON válido"); }
+    if (!res.ok) {
+      const msg = Array.isArray(data) ? data.join(", ") : (data.detail || JSON.stringify(data));
+      throw new Error(msg);
+    }
+    return data;
+  })
+  .then(order => {
+    alert("✔ Orden creada #" + order.id);
+    return fetch("/api/payments/simulate/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({ order_id: order.id, provider: "stripe" })
+    });
+  })
+  .then(async res => {
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error en el pago");
+    return data;
+  })
+  .then(() => {
+    alert("🎉 Pago exitoso");
+    loadCart();
+  })
+  .catch(err => {
+    console.error("ERROR:", err);
+    alert("❌ " + err.message);
+  });
+}
+
+function showAuthModal() {
+  document.getElementById("authModal").style.display = "block";
+}
+
+async function login() {
+  const res = await fetch("/api/users/token/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value
+    })
+  });
+
+  const data = await res.json();
+
+  if (res.ok) {
+    localStorage.setItem("access", data.access);
+    localStorage.setItem("refresh", data.refresh);
+    document.getElementById("authModal").style.display = "none";
+
+    // FIX: recargar carrito (para que el servidor fusione el carrito anónimo)
+    // y luego hacer el checkout
+    await reloadCartThenCheckout(data.access);
+  } else {
+    alert("Error al iniciar sesión: " + (data.detail || "credenciales incorrectas"));
+  }
+}
+
+async function reloadCartThenCheckout(token) {
+  // Hacer un GET al carrito autenticado para forzar la fusión en el servidor
+  await fetch("/api/cart/", {
+    headers: { "Authorization": "Bearer " + token }
+  });
+  loadCart();
+  createOrder(token);
+}
+
+async function register() {
+  const res = await fetch("/api/users/register/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value
+    })
+  });
+  if (res.ok) {
+    alert("Usuario creado ✔ Ahora inicia sesión");
+  } else {
+    const data = await res.json();
+    alert("Error al registrarse: " + JSON.stringify(data));
+  }
+}
+
+loadCart();
+
+</script>
+
+{% endblock %}

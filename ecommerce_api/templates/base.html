@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}E-commerce{% endblock %}</title>
+</head>
+<body>
+
+{% include "components/navbar.html" %}
+
+<div style="padding:20px;">
+    {% block content %}
+    {% endblock %}
+</div>
+
+{% include "components/footer.html" %}
+
+</body>
+</html>

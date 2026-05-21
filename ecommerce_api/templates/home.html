@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+
+<h1>🛒 Bienvenido a mi E-commerce</h1>
+
+<h2>Productos destacados</h2>
+
+<div>
+    {% for product in products %}
+        <div style="border:1px solid #ccc; padding:10px; margin:10px;">
+            <h3>{{ product.name }}</h3>
+            <p>${{ product.price }}</p>
+
+            {% if product.image %}
+                <img src="{{ product.image.url }}" width="120">
+            {% endif %}
+
+            <a href="/products/{{ product.slug }}/">Ver detalle</a>
+        </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
